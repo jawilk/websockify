@@ -20,9 +20,14 @@ from websockify import websockifyserver
 from websockify import auth_plugins as auth
 from urllib.parse import parse_qs, urlparse
 
+# from filelock import FileLock
+
+
 class ProxyRequestHandler(websockifyserver.WebSockifyRequestHandler):
 
     buffer_size = 65536
+
+    rbpf_pid = None
 
     traffic_legend = """
 Traffic Legend:
@@ -46,11 +51,12 @@ Traffic Legend:
 
     def validate_connection(self):
         if not self.server.token_plugin:
-            return
+           return
+        self.server.target_host = "localhost"
 
         host, port = self.get_target(self.server.token_plugin)
         if host == 'unix_socket':
-            self.server.unix_target = port
+           self.server.unix_target = port
 
         else:
             self.server.target_host = host
@@ -89,6 +95,12 @@ Traffic Legend:
         # Checking for a token is done in validate_connection()
 
         # Connect to the target
+        print("\n**** new_websocket_client: ", self.server.target_port, "\n")
+        proc = subprocess.Popen(["/home/wj/temp/git_temp/solana/target/debug/rbpf-cli /home/wj/temp/test_theia/debug-test/browser-app/code/target/hello.so --use debugger -i /home/wj/temp/git_temp/solana/target/debug/input.txt --host 127.0.0.1 --port "+str(self.server.target_port)], shell=True)
+        self.rbpf_pid = proc.pid
+        print("NEW PROCESS: ", self.rbpf_pid)
+        time.sleep(0.5)
+
         if self.server.wrap_cmd:
             msg = "connecting to command: '%s' (port %s)" % (" ".join(self.server.wrap_cmd), self.server.target_port)
         elif self.server.unix_target:
@@ -122,6 +134,14 @@ Traffic Legend:
         try:
             self.do_proxy(tsock)
         finally:
+            # # Write back free'd port
+            # with FileLock(self.server.token_plugin.source + '.lock'):
+            #     with open(self.server.token_plugin.source, 'a') as f:
+            #         f.write(self.server.target_port + '\n')
+            try:
+                os.killpg(self.rbpf_pid, signal.SIGTERM)
+            except:
+                pass
             if tsock:
                 tsock.shutdown(socket.SHUT_RDWR)
                 tsock.close()
@@ -139,28 +159,28 @@ Traffic Legend:
         # The files in targets contain the lines
         # in the form of token: host:port
 
-        if self.host_token:
-            # Use hostname as token
-            token = self.headers.get('Host')
+        # if self.host_token:
+        #     # Use hostname as token
+        #     token = self.headers.get('Host')
 
-            # Remove port from hostname, as it'll always be the one where
-            # websockify listens (unless something between the client and
-            # websockify is redirecting traffic, but that's beside the point)
-            if token:
-                token = token.partition(':')[0]
+        #     # Remove port from hostname, as it'll always be the one where
+        #     # websockify listens (unless something between the client and
+        #     # websockify is redirecting traffic, but that's beside the point)
+        #     if token:
+        #         token = token.partition(':')[0]
 
-        else:
-            # Extract the token parameter from url
-            args = parse_qs(urlparse(self.path)[4]) # 4 is the query from url
+        # else:
+        #     # Extract the token parameter from url
+        #     args = parse_qs(urlparse(self.path)[4]) # 4 is the query from url
 
-            if 'token' in args and len(args['token']):
-                token = args['token'][0].rstrip('\n')
-            else:
-                token = None
+        #     if 'token' in args and len(args['token']):
+        #         token = args['token'][0].rstrip('\n')
+        #     else:
+        #         token = None
 
-        if token is None:
-            raise self.server.EClose("Token not present")
-
+        # if token is None:
+        #     raise self.server.EClose("Token not present")
+        token = ''
         result_pair = target_plugin.lookup(token)
 
         if result_pair is not None:

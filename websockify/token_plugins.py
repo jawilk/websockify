@@ -4,6 +4,9 @@ import sys
 import time
 import re
 
+# from filelock import FileLock
+import socket
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,6 +17,38 @@ class BasePlugin():
     def lookup(self, token):
         return None
 
+class PortOnly(BasePlugin):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._targets = None
+
+    def lookup(self, token):
+        with socket.socket() as s:
+            s.bind(('', 0))
+            p = str(s.getsockname()[1])
+            s.close()
+            print("NEW PORT: ", p)
+            return ('', p)
+        # port = None
+        # # Lock port file
+        # with FileLock(self.source + '.lock'):
+        #     print("\n**** source: ", self.source)
+        #     ports = None
+        #     # Get one port
+        #     with open(self.source, 'r') as f:
+        #         ports = f.readlines()
+        #         print("\n******ports read: ", ports)
+        #         port = ports[0]
+        #         ports = ports[1:]
+        #         print("\n******ports after: ", ports)
+        #     # Write back ports sans removed one
+        #     with open(self.source, 'w') as f:
+        #         print("\n*******write back: ", ports)
+        #         for p in ports:
+        #             f.write(p)
+        # if port:
+        #     print("NEW PORT: ", port.rstrip('\n'))
+        #     return ('', port.rstrip('\n')) 
 
 class ReadOnlyTokenFile(BasePlugin):
     # source is a token file with lines like
