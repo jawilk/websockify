@@ -7,6 +7,9 @@ import re
 # from filelock import FileLock
 import socket
 
+import psutil
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,34 +24,40 @@ class PortOnly(BasePlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._targets = None
+        
+    def _get_listening_port(self, uuid):
+        # Read the PID from the file
+        with open(f'pids/{uuid}.txt', 'r') as f:
+            pid = int(f.read())
+        
+        while True:
+            time.sleep(0.5)
+            for conn in psutil.Process(pid).connections():
+                if conn.status == psutil.CONN_LISTEN:
+                    print(f"Port {conn.laddr.port} is listening")
+                    return conn.laddr.port
 
     def lookup(self, token):
-        with socket.socket() as s:
-            s.bind(('', 0))
-            p = str(s.getsockname()[1])
-            s.close()
+        print("TOKEN: ", token)
+        
+        p = None
+        # New request
+        if ('tx_hash' in token):
+            print("---- NEW REQUEST")
+            with socket.socket() as s:
+                s.bind(('', 0))
+                p = str(s.getsockname()[1])
+                s.close()
+                print("NEW PORT: ", p)
+        # CPI
+        else:
+            print("---- CPI")
+            uuid = token['token'][0]
+            print("UUID: ", uuid)
+            p = self._get_listening_port(uuid)
             print("NEW PORT: ", p)
-            return ('', p)
-        # port = None
-        # # Lock port file
-        # with FileLock(self.source + '.lock'):
-        #     print("\n**** source: ", self.source)
-        #     ports = None
-        #     # Get one port
-        #     with open(self.source, 'r') as f:
-        #         ports = f.readlines()
-        #         print("\n******ports read: ", ports)
-        #         port = ports[0]
-        #         ports = ports[1:]
-        #         print("\n******ports after: ", ports)
-        #     # Write back ports sans removed one
-        #     with open(self.source, 'w') as f:
-        #         print("\n*******write back: ", ports)
-        #         for p in ports:
-        #             f.write(p)
-        # if port:
-        #     print("NEW PORT: ", port.rstrip('\n'))
-        #     return ('', port.rstrip('\n')) 
+
+        return ('', p)
 
 class ReadOnlyTokenFile(BasePlugin):
     # source is a token file with lines like

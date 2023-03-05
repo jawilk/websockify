@@ -20,6 +20,7 @@ from websockify import websockifyserver
 from websockify import auth_plugins as auth
 from urllib.parse import parse_qs, urlparse
 
+import psutil
 # from filelock import FileLock
 
 
@@ -27,7 +28,7 @@ class ProxyRequestHandler(websockifyserver.WebSockifyRequestHandler):
 
     buffer_size = 65536
 
-    rbpf_pid = None
+    poc_pid = None
 
     traffic_legend = """
 Traffic Legend:
@@ -96,10 +97,11 @@ Traffic Legend:
 
         # Connect to the target
         print("\n**** new_websocket_client: ", self.server.target_port, "\n")
-        proc = subprocess.Popen(["/home/wj/temp/git_temp/solana/target/debug/rbpf-cli /home/wj/temp/test_theia/debug-test/browser-app/code/target/hello.so --use debugger -i /home/wj/temp/git_temp/solana/target/debug/input.txt --host 127.0.0.1 --port "+str(self.server.target_port)], shell=True)
-        self.rbpf_pid = proc.pid
-        print("NEW PROCESS: ", self.rbpf_pid)
-        time.sleep(0.5)
+        #proc = subprocess.Popen(["RUST_LOG=trace /home/wj/temp/git_temp/solana/target/debug/rbpf-cli /home/wj/projects/bpf-wtf/solana-tx-debug/filesystem/programs/HELLOcdscdscd/code/hello.so --use debugger -i /home/wj/temp/git_temp/solana/target/debug/input.txt --host 127.0.0.1 --port "+str(self.server.target_port)], shell=True)
+        #proc = subprocess.Popen(["/home/wj/temp/test-solana/poc-rewrite/target/debug/poc-rewrite " + self.server.tx_hash + " " + self.server.inst_nr + " " + self.server.target_port], shell=True)
+        #self.rbpf_pid = proc.pid
+        #print("NEW PROCESS: ", self.rbpf_pid)
+        #time.sleep(0.5)
 
         if self.server.wrap_cmd:
             msg = "connecting to command: '%s' (port %s)" % (" ".join(self.server.wrap_cmd), self.server.target_port)
@@ -139,8 +141,11 @@ Traffic Legend:
             #     with open(self.server.token_plugin.source, 'a') as f:
             #         f.write(self.server.target_port + '\n')
             try:
-                os.killpg(self.rbpf_pid, signal.SIGTERM)
+                print("CLOSING PROCESS", self.poc_pid)
+                sleep(5)
+                os.kill(self.poc_pid, signal.SIGTERM)
             except:
+                print("EXCEEEEEPT")
                 pass
             if tsock:
                 tsock.shutdown(socket.SHUT_RDWR)
@@ -159,34 +164,53 @@ Traffic Legend:
         # The files in targets contain the lines
         # in the form of token: host:port
 
-        # if self.host_token:
-        #     # Use hostname as token
-        #     token = self.headers.get('Host')
+        #if self.host_token:
+             # Use hostname as token
+         #    token = self.headers.get('Host')
 
-        #     # Remove port from hostname, as it'll always be the one where
-        #     # websockify listens (unless something between the client and
-        #     # websockify is redirecting traffic, but that's beside the point)
-        #     if token:
-        #         token = token.partition(':')[0]
+             # Remove port from hostname, as it'll always be the one where
+             # websockify listens (unless something between the client and
+             # websockify is redirecting traffic, but that's beside the point)
+          #   if token:
+           #      token = token.partition(':')[0]
 
-        # else:
-        #     # Extract the token parameter from url
-        #     args = parse_qs(urlparse(self.path)[4]) # 4 is the query from url
+        #else:
+             # Extract the token parameter from url
+        args = parse_qs(urlparse(self.path)[4]) # 4 is the query from url
+        #if 'token' in args and len(args['token']):
+         #    token = args['token']
+        #else:
+         #    token = None
 
-        #     if 'token' in args and len(args['token']):
-        #         token = args['token'][0].rstrip('\n')
-        #     else:
-        #         token = None
-
-        # if token is None:
-        #     raise self.server.EClose("Token not present")
-        token = ''
-        result_pair = target_plugin.lookup(token)
+        #if token is None:
+         #    raise self.server.EClose("Token not present")
+             
+        result_pair = target_plugin.lookup(args)
+        # New request
+        if ('tx_hash' in args):
+            target_port = result_pair[1]
+            uuid = args['token'][0]
+            tx_hash = args['tx_hash'][0]
+            inst_nr = args['inst_nr'][0]
+            print("BEFORE START PROCESS:", uuid, tx_hash, inst_nr, target_port)
+            new_process = subprocess.Popen(["/home/wj/temp/test-solana/poc-rewrite/target/debug/poc-rewrite", tx_hash, inst_nr, target_port])
+            self.poc_pid = new_process.pid
+            with open(f'pids/{uuid}.txt', 'w') as f:
+                f.write(str(self.poc_pid))
+            print("NEW PROCESS: ", self.poc_pid)
+            # TODO use pipes for communication instead of dumb waiting
+            is_listening = True
+            while is_listening:
+                time.sleep(0.5)
+                for conn in psutil.Process(self.poc_pid).connections():
+                    if conn.status == psutil.CONN_LISTEN:
+                        print(f"Port {conn.laddr.port} is listening")
+                        is_listening = False
 
         if result_pair is not None:
             return result_pair
         else:
-            raise self.server.EClose("Token '%s' not found" % token)
+            raise self.server.EClose("Token '%s' not found" % args)
 
     def do_proxy(self, target):
         """
