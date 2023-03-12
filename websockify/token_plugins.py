@@ -34,28 +34,20 @@ class PortOnly(BasePlugin):
             time.sleep(0.5)
             for conn in psutil.Process(pid).connections():
                 if conn.status == psutil.CONN_LISTEN:
-                    print(f"Port {conn.laddr.port} is listening")
                     return conn.laddr.port
 
     def lookup(self, token):
-        print("TOKEN: ", token)
-        
         p = None
         # New request
         if ('tx_hash' in token):
-            print("---- NEW REQUEST")
             with socket.socket() as s:
                 s.bind(('', 0))
                 p = str(s.getsockname()[1])
                 s.close()
-                print("NEW PORT: ", p)
         # CPI
         else:
-            print("---- CPI")
             uuid = token['token'][0]
-            print("UUID: ", uuid)
             p = self._get_listening_port(uuid)
-            print("NEW PORT: ", p)
 
         return ('', p)
 

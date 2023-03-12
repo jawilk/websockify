@@ -105,7 +105,6 @@ Traffic Legend:
         # Checking for a token is done in validate_connection()
 
         # Connect to the target
-        print("\n**** new_websocket_client: ", self.server.target_port, "\n")
         #proc = subprocess.Popen(["RUST_LOG=trace /home/wj/temp/git_temp/solana/target/debug/rbpf-cli /home/wj/projects/bpf-wtf/solana-tx-debug/filesystem/programs/HELLOcdscdscd/code/hello.so --use debugger -i /home/wj/temp/git_temp/solana/target/debug/input.txt --host 127.0.0.1 --port "+str(self.server.target_port)], shell=True)
         #proc = subprocess.Popen(["/home/wj/temp/test-solana/poc-rewrite/target/debug/poc-rewrite " + self.server.tx_hash + " " + self.server.inst_nr + " " + self.server.target_port], shell=True)
         #self.rbpf_pid = proc.pid
@@ -151,11 +150,9 @@ Traffic Legend:
             #     with open(self.server.token_plugin.source, 'a') as f:
             #         f.write(self.server.target_port + '\n')
             try:
-                print("CLOSING PROCESS", self.poc_pid)
                 sleep(5)
                 os.kill(self.poc_pid, signal.SIGTERM)
             except:
-                print("EXCEEEEEPT")
                 pass
             if tsock:
                 tsock.shutdown(socket.SHUT_RDWR)
@@ -202,20 +199,17 @@ Traffic Legend:
             uuid = args['token'][0]
             tx_hash = args['tx_hash'][0]
             inst_nr = args['inst_nr'][0]
-            print("BEFORE START PROCESS:", uuid, tx_hash, inst_nr, target_port)
             new_process = subprocess.Popen(
                 ["../poc/target/debug/poc", tx_hash, inst_nr, target_port])
             self.poc_pid = new_process.pid
             with open(f'pids/{uuid}.txt', 'w') as f:
                 f.write(str(self.poc_pid))
-            print("NEW PROCESS: ", self.poc_pid)
             # TODO use pipes for communication instead of dumb waiting
             is_listening = True
             while is_listening:
                 time.sleep(0.5)
                 for conn in psutil.Process(self.poc_pid).connections():
                     if conn.status == psutil.CONN_LISTEN:
-                        print(f"Port {conn.laddr.port} is listening")
                         is_listening = False
 
         if result_pair is not None:
